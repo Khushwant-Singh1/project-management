@@ -1,12 +1,25 @@
 import React from "react";
-import { Search, Settings } from "lucide-react";
+import { Menu, Search, Settings } from "lucide-react";
 import Link from "next/link";
+import { useAppDispatch, useAppSelector } from "./redux";
+import { setIsSidebarCollapsed } from "@/state";
 
 const Navbar = () => {
+  const dispatch = useAppDispatch();
+  const isSidebarCollapsed = useAppSelector(
+    (state) => state.global.isSidebarCollapsed
+  );
   return (
     <div className="flex items-center justify-between bg-white px-4 py-3 dark:px-4 dark:py-3">
       Navbar
       <div className="flex items-center gap-8">
+        {!isSidebarCollapsed ? null : (
+          <button
+            onClick={() => dispatch(setIsSidebarCollapsed(!isSidebarCollapsed))}
+          >
+            <Menu className="h-8 w-8 cursor-pointer" />
+          </button>
+        )}
         <div className="relative flex h-min w-[200px]">
           <Search className="absolute left-[4px] top-1/2  mr-2 h-5 w-5 -translate-y-1/2 transform cursor-poiter dark:text-white" />
           <input
@@ -18,7 +31,7 @@ const Navbar = () => {
       </div>
       <div className="flex items-center">
         <Link
-          href="settings"
+          href="/settings"
           className="h-min w-min rounded p-2  hover:bg-gray-100"
         >
           <Settings className="h-6 w-6 cursor-pointer" />
