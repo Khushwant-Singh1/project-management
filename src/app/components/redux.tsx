@@ -1,68 +1,97 @@
-import { configureStore, createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Provider } from 'react-redux';
-import React from 'react';
-import storage from 'redux-persist/lib/storage'; // Default storage (localStorage for web)
-import { persistStore, persistReducer } from 'redux-persist';
-import { PersistGate } from 'redux-persist/integration/react';
+import { useRef } from "react";
+import { combineReducers, configureStore } from "@reduxjs/toolkit";
+import {
+  TypedUseSelectorHook,
+  useDispatch,
+  useSelector,
+  Provider,
+} from "react-redux";
+import globalReducer from "@/state";
+import { api } from "@/state/api";
+import { setupListeners } from "@reduxjs/toolkit/query";
 
-// Define the initial state
-interface CounterState {
-    value: number;
-}
+import {
+  persistStore,
+  persistReducer,
+  FLUSH,
+  REHYDRATE,
+  PAUSE,
+  PERSIST,
+  PURGE,
+  REGISTER,
+} from "redux-persist";
+import { PersistGate } from "redux-persist/integration/react";
+import createWebStorage from "redux-persist/lib/storage/createWebStorage";
 
-const initialState: CounterState = {
-    value: 0,
+/* REDUX PERSISTENCE */
+const createNoopStorage = () => {
+  return {
+    getItem(_key: any) {
+      return Promise.resolve(null);
+    },
+    setItem(_key: any, value: any) {
+      return Promise.resolve(value);
+    },
+    removeItem(_key: any) {
+      return Promise.resolve();
+    },
+  };
 };
 
-// Create a slice
-const counterSlice = createSlice({
-    name: 'counter',
-    initialState,
-    reducers: {
-        increment: (state) => {
-            state.value += 1;
-        },
-        decrement: (state) => {
-            state.value -= 1;
-        },
-        incrementByAmount: (state, action: PayloadAction<number>) => {
-            state.value += action.payload;
-        },
-    },
-});
+const storage =
+  typeof window === "undefined"
+    ? createNoopStorage()
+    : createWebStorage("local");
 
-// Export actions
-export const { increment, decrement, incrementByAmount } = counterSlice.actions;
-
-// Configure Redux Persist
 const persistConfig = {
-    key: 'root',
-    storage,
+  key: "root",
+  storage,
+  whitelist: ["global"],
 };
-
-const persistedReducer = persistReducer(persistConfig, counterSlice.reducer);
-
-// Create the store
-const store = configureStore({
-    reducer: {
-        counter: persistedReducer,
-    },
+const rootReducer = combineReducers({
+  global: globalReducer,
+  [api.reducerPath]: api.reducer,
 });
+const persistedReducer = persistReducer(persistConfig, rootReducer);
 
-// Create the persistor
-const persistor = persistStore(store);
-
-// Define RootState and AppDispatch types
-export type RootState = ReturnType<typeof store.getState>;
-export type AppDispatch = typeof store.dispatch;
-
-// Create a Redux provider component
-export const ReduxProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-    return (
-        <Provider store={store}>
-            <PersistGate loading={null} persistor={persistor}>
-                {children}
-            </PersistGate>
-        </Provider>
-    );
+/* REDUX STORE */
+export const makeStore = () => {
+  return configureStore({
+    reducer: persistedReducer,
+    middleware: (getDefault) =>
+      getDefault({
+        serializableCheck: {
+          ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
+        },
+      }).concat(api.middleware),
+  });
 };
+
+/* REDUX TYPES */
+export type AppStore = ReturnType<typeof makeStore>;
+export type RootState = ReturnType<AppStore["getState"]>;
+export type AppDispatch = AppStore["dispatch"];
+export const useAppDispatch = () => useDispatch<AppDispatch>();
+export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
+
+/* PROVIDER */
+export default function StoreProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const storeRef = useRef<AppStore>();
+  if (!storeRef.current) {
+    storeRef.current = makeStore();
+    setupListeners(storeRef.current.dispatch);
+  }
+  const persistor = persistStore(storeRef.current);
+
+  return (
+    <Provider store={storeRef.current}>
+      <PersistGate loading={null} persistor={persistor}>
+        {children}
+      </PersistGate>
+    </Provider>
+  );
+}
